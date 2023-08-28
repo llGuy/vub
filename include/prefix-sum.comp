@@ -1,0 +1,52 @@
+#version 450
+
+#extension GL_KHR_shader_subgroup_basic : require
+#extension GL_KHR_shader_subgroup_arithmetic : require
+
+#define PROCESSOR_DESCRIPTOR_STATUS_X 0
+#define PROCESSOR_DESCRIPTOR_STATUS_A 1
+#define PROCESSOR_DESCRIPTOR_STATUS_P 2
+
+#include "prefix-sum.h"
+
+#define NUM_VALUES_PER_BLOCK (NUM_VALUES_PER_THREAD * NUM_THREADS_PER_BLOCK)
+
+layout(local_size_x = NUM_THREADS_PER_BLOCK,
+       local_size_y = 1,
+       local_size_z = 1) in;
+
+layout(set = 0, binding = 0) buffer InputBuffer {
+  ELEMT elements[];
+} uInputBuffer;
+
+layout(set = 1, binding = 0) buffer StatusBuffer {
+  /* These need to be set to 0 before hand (like with vkCmdFillBuffer). */
+  ProcessorDescriptor descriptors[];
+} uStatusBuffer;
+
+layout(push_constant) uniform PushConstant {
+  uint numElements;
+} uPushConstant;
+
+void main()
+{
+  /* Some preliminaries. */
+  uint blockID = gl_WorkGroupID.x;
+  uint localThreadID = gl_LocalInvocationID.x;
+  uint globalThreadID = blockID * gl_WorkGroupSize.x + localThreadID;
+
+  uint threadElementOffset = globalThreadID * NUM_VALUES_PER_THREAD;
+
+  /* Load values for this thread. */
+  ELEMT localValues[NUM_VALUES_PER_THREAD];
+  for (int i = 0; i < NUM_VALUES_PER_THREAD; ++i)
+    localValues[i] = uInputBuffer.elements[threadElementOffset + i];
+
+  /* Perform exclusive prefix sum of local values. */
+  for (uint i = 1; i < NUM_VALUES_PER_THREAD; ++i)
+    localValues[i] += localValues[i-1];
+  ELEMT inclusivePrefix = localValues[NUM_VALUES_PER_THREAD-1];
+  for (uint i = NUM_VALUES_PER_THREAD-1; i > 0; --i)
+    localValues[i] = localValues[i-1];
+  localValues[0] = 0;
+}

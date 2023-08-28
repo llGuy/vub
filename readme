@@ -1,0 +1,2 @@
+VUB - A library which like NVIDIA Cub, provides parallel primitives for general
+purpose GPU programming, but for Vulkan applications.
